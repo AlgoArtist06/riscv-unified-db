@@ -3515,41 +3515,65 @@ template <template <unsigned, bool> class BitsClass, unsigned N, bool Signed>
   requires ((BitsClass<N, Signed>::IsABits) && (N > udb::BitsMaxNativePrecision))
 struct fmt::formatter<BitsClass<N, Signed>> {
  private:
-  fmt::detail::dynamic_format_specs<char> specs_;
+  char presentation_type_ = 'd';
+  int width_ = 0;
+  bool alt_flag_ = false;
 
  public:
   constexpr auto parse(fmt::format_parse_context &ctx) -> decltype(ctx.begin()) {
-    auto end = parse_format_specs(ctx.begin(), ctx.end(), specs_, ctx, fmt::detail::type::int_type);
-    return end;
+    auto it = ctx.begin();
+    auto end = ctx.end();
+
+    // Parse width
+    if (it != end && *it >= '0' && *it <= '9') {
+      width_ = 0;
+      while (it != end && *it >= '0' && *it <= '9') {
+        width_ = width_ * 10 + (*it - '0');
+        ++it;
+      }
+    }
+
+    // Parse alternate form flag
+    if (it != end && *it == '#') {
+      alt_flag_ = true;
+      ++it;
+    }
+
+    // Parse presentation type
+    if (it != end && (*it == 'x' || *it == 'X' || *it == 'o' || *it == 'd')) {
+      presentation_type_ = *it;
+      ++it;
+    }
+
+    return it;
   }
 
   template <class FormatContext>
   auto format(const BitsClass<N, Signed> &c, FormatContext &ctx) -> decltype(ctx.out()) {
-    fmt::detail::handle_dynamic_spec<fmt::detail::precision_checker>(specs_.width, specs_.width_ref,
-                                                                     ctx);
     int base = 10;
     std::string gmp_fmt_string = "%";
-    if (specs_.fill.data()[0] == '0') gmp_fmt_string += "0";
-    if (specs_.alt) gmp_fmt_string += "#";
-    if (specs_.sign == fmt::sign_t::plus) gmp_fmt_string += "+";
-    if (specs_.sign == fmt::sign_t::minus) gmp_fmt_string += "-";
-    if (specs_.sign == fmt::sign_t::space) gmp_fmt_string += " ";
-    if (specs_.width != 0) gmp_fmt_string += std::to_string(specs_.width);
+
+    if (width_ != 0) {
+      gmp_fmt_string += std::to_string(width_);
+    }
+
     gmp_fmt_string += "Z";
-    if (specs_.type == fmt::presentation_type::hex_lower) {
+
+    if (presentation_type_ == 'x') {
       base = 16;
       gmp_fmt_string += "x";
-    } else if (specs_.type == fmt::presentation_type::hex_upper) {
+    } else if (presentation_type_ == 'X') {
       base = 16;
       gmp_fmt_string += "X";
-    } else if (specs_.type == fmt::presentation_type::oct) {
+    } else if (presentation_type_ == 'o') {
       base = 8;
       gmp_fmt_string += "o";
     } else {
       base = 10;
       gmp_fmt_string += "d";
     }
-    size_t strwidth = std::max((size_t)specs_.width, mpz_sizeinbase(c.get().get_mpz_t(), base));
+
+    size_t strwidth = std::max((size_t)width_, mpz_sizeinbase(c.get().get_mpz_t(), base));
     char *str = new char[strwidth + 100];
     gmp_snprintf(str, strwidth + 100, gmp_fmt_string.c_str(), c.get().get_mpz_t());
     auto ret_val = fmt::format_to(ctx.out(), "{}", str);
