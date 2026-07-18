@@ -433,6 +433,7 @@ module Udb
     # Handles JSON schema keywords:
     # - const: exact boolean value
     # - allOf: conjunction of subschemas
+    # - anyOf: disjunction of subschemas
     #
     # @param solver [Z3Solver] The solver to add assertions to
     # @param term [Z3::BoolExpr] The Z3 boolean term to constrain
@@ -458,12 +459,15 @@ module Udb
 
       if schema_hsh.key?("allOf")
         schema_hsh.fetch("allOf").each do |h|
-          assertions += constrain_bool(solver, term, h)
+          assertions += constrain_bool(solver, term, h, assert: false)
         end
       end
 
       if schema_hsh.key?("anyOf")
-        raise "TODO: anyOf not yet implemented for boolean constraints"
+        branches = schema_hsh.fetch("anyOf").map do |h|
+          constrain_bool(solver, term, h, assert: false)
+        end
+        assertions << any_of_constraint(branches)
       end
 
       if schema_hsh.key?("oneOf")
@@ -492,6 +496,7 @@ module Udb
     # Handles JSON schema keywords:
     # - const: exact string value (compared via hash)
     # - enum: one of several string values (compared via hash)
+    # - anyOf: disjunction of subschemas
     #
     # @param solver [Z3Solver] The solver to add assertions to
     # @param term [Z3::IntExpr] The Z3 integer term representing the string hash
@@ -526,7 +531,10 @@ module Udb
       end
 
       if schema_hsh.key?("anyOf")
-        raise "TODO: anyOf not yet implemented for string constraints"
+        branches = schema_hsh.fetch("anyOf").map do |h|
+          constrain_string(solver, term, h, assert: false)
+        end
+        assertions << any_of_constraint(branches)
       end
 
       if schema_hsh.key?("oneOf")
@@ -546,6 +554,15 @@ module Udb
       end
       assertions
     end
+
+    sig { params(branches: T::Array[T::Array[Z3::BoolExpr]]).returns(Z3::BoolExpr) }
+    def self.any_of_constraint(branches)
+      expressions = branches.map do |branch|
+        branch.reduce(Z3.True) { |expression, assertion| expression & assertion }
+      end
+      expressions.reduce(Z3.False) { |expression, branch| expression | branch }
+    end
+    private_class_method :any_of_constraint
 
     # Extract array constraints from JSON schema
     #

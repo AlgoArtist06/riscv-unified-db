@@ -204,6 +204,47 @@ class TestZ3ParameterConstraints < Minitest::Test
     assert @solver.satisfiable?
   end
 
+  def test_constrain_bool_with_anyof
+    schema = {
+      "type" => "boolean",
+      "anyOf" => [
+        { "allOf" => [{ "const" => true }] },
+        { "const" => false }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_bool", @solver, schema)
+
+    [true, false].each do |value|
+      @solver.push
+      @solver.assert(param == value)
+      assert @solver.satisfiable?
+      @solver.pop
+    end
+  end
+
+  def test_constrain_string_with_anyof
+    schema = {
+      "type" => "string",
+      "anyOf" => [
+        { "const" => "alpha" },
+        { "enum" => ["beta", "gamma"] }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_string", @solver, schema)
+
+    ["alpha", "beta", "gamma"].each do |value|
+      @solver.push
+      @solver.assert(param == value)
+      assert @solver.satisfiable?
+      @solver.pop
+    end
+
+    @solver.push
+    @solver.assert(param == "delta")
+    refute @solver.satisfiable?
+    @solver.pop
+  end
+
   # Type detection tests
   def test_detect_type_from_allof_integer
     schema = {
