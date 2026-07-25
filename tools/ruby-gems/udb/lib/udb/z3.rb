@@ -318,12 +318,13 @@ module Udb
   # Supported JSON schema features:
   # - Type constraints (boolean, integer, string, array)
   # - Value constraints (const, enum, minimum, maximum)
-  # - Composition (allOf)
+  # - Composition (allOf; anyOf for boolean and string)
   # - References ($ref to uint32/uint64)
   # - Array constraints (items, minItems, maxItems, contains, uniqueItems)
   #
   # Not yet supported (TODO):
-  # - anyOf, oneOf, noneOf (would require disjunctive constraints)
+  # - anyOf for integer and array
+  # - oneOf, noneOf
   # - if/then/else (conditional schemas)
   class Z3ParameterTerm
     extend T::Sig
@@ -433,7 +434,7 @@ module Udb
     # Handles JSON schema keywords:
     # - const: exact boolean value
     # - allOf: conjunction of subschemas
-    # - anyOf: disjunction of subschemas
+    # - anyOf: inclusive disjunction of subschemas (at least one must hold)
     #
     # @param solver [Z3Solver] The solver to add assertions to
     # @param term [Z3::BoolExpr] The Z3 boolean term to constrain
@@ -496,7 +497,7 @@ module Udb
     # Handles JSON schema keywords:
     # - const: exact string value (compared via hash)
     # - enum: one of several string values (compared via hash)
-    # - anyOf: disjunction of subschemas
+    # - anyOf: inclusive disjunction of subschemas (at least one must hold)
     #
     # @param solver [Z3Solver] The solver to add assertions to
     # @param term [Z3::IntExpr] The Z3 integer term representing the string hash
