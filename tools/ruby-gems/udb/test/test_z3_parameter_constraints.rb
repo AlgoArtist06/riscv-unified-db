@@ -204,6 +204,105 @@ class TestZ3ParameterConstraints < Minitest::Test
     assert @solver.satisfiable?
   end
 
+  def test_constrain_int_with_anyof_const
+    schema = {
+      "anyOf" => [
+        { "const" => 1 },
+        { "const" => 2 }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_const_param", @solver, schema)
+
+    assert @solver.satisfiable?
+
+    # Only 1 or 2 should be allowed
+    [1, 2].each do |value|
+      @solver.push
+      @solver.assert(param == value)
+      assert @solver.satisfiable?
+      @solver.pop
+    end
+
+    @solver.push
+    @solver.assert(param == 3)
+    refute @solver.satisfiable?
+    @solver.pop
+  end
+
+  def test_constrain_int_with_anyof_ranges
+    schema = {
+      "anyOf" => [
+        { "minimum" => 0, "maximum" => 10 },
+        { "minimum" => 100, "maximum" => 110 }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_range_param", @solver, schema)
+
+    assert @solver.satisfiable?
+
+    # A value inside either range is allowed
+    [5, 105].each do |value|
+      @solver.push
+      @solver.assert(param == value)
+      assert @solver.satisfiable?
+      @solver.pop
+    end
+
+    # A value in the gap between the two ranges is not
+    @solver.push
+    @solver.assert(param == 50)
+    refute @solver.satisfiable?
+    @solver.pop
+  end
+
+  def test_constrain_int_with_anyof_and_other_constraints
+    # anyOf combined with a sibling minimum: the value must satisfy the
+    # minimum *and* fall into one of the anyOf subschemas.
+    schema = {
+      "minimum" => 1,
+      "anyOf" => [
+        { "const" => 0 },
+        { "const" => 5 }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_combined_param", @solver, schema)
+
+    # const 0 satisfies anyOf but violates the sibling minimum, so only 5 remains
+    @solver.push
+    @solver.assert(param == 0)
+    refute @solver.satisfiable?
+    @solver.pop
+
+    @solver.push
+    @solver.assert(param == 5)
+    assert @solver.satisfiable?
+    @solver.pop
+  end
+
+  def test_constrain_int_with_anyof_nested_allof
+    # A nested allOf must stay branch-local. If it leaked straight into the
+    # solver, the 10..20 branch would become mandatory and 105 unsatisfiable.
+    schema = {
+      "anyOf" => [
+        { "allOf" => [{ "minimum" => 10 }, { "maximum" => 20 }] },
+        { "minimum" => 100, "maximum" => 110 }
+      ]
+    }
+    param = Udb::Z3ParameterTerm.new("anyof_nested_allof_param", @solver, schema)
+
+    [15, 105].each do |value|
+      @solver.push
+      @solver.assert(param == value)
+      assert @solver.satisfiable?
+      @solver.pop
+    end
+
+    @solver.push
+    @solver.assert(param == 50)
+    refute @solver.satisfiable?
+    @solver.pop
+  end
+
   def test_constrain_bool_with_anyof
     schema = {
       "type" => "boolean",

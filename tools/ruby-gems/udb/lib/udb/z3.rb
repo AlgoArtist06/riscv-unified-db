@@ -318,12 +318,12 @@ module Udb
   # Supported JSON schema features:
   # - Type constraints (boolean, integer, string, array)
   # - Value constraints (const, enum, minimum, maximum)
-  # - Composition (allOf; anyOf for boolean and string)
+  # - Composition (allOf; anyOf for boolean, integer, and string)
   # - References ($ref to uint32/uint64)
   # - Array constraints (items, minItems, maxItems, contains, uniqueItems)
   #
   # Not yet supported (TODO):
-  # - anyOf for integer and array
+  # - anyOf for array
   # - oneOf, noneOf
   # - if/then/else (conditional schemas)
   class Z3ParameterTerm
@@ -342,6 +342,7 @@ module Udb
     # - enum: one of several values
     # - minimum/maximum: range bounds (unsigned comparison)
     # - allOf: conjunction of subschemas
+    # - anyOf: inclusive disjunction of subschemas (at least one must hold)
     # - $ref: references to uint32/uint64 types
     #
     # @param solver [Z3Solver] The solver to add assertions to
@@ -386,12 +387,15 @@ module Udb
 
       if schema_hsh.key?("allOf")
         schema_hsh.fetch("allOf").each do |h|
-          assertions += constrain_int(solver, term, h)
+          assertions += constrain_int(solver, term, h, assert: false)
         end
       end
 
       if schema_hsh.key?("anyOf")
-        raise "TODO: anyOf not yet implemented for integer constraints"
+        branches = schema_hsh.fetch("anyOf").map do |h|
+          constrain_int(solver, term, h, assert: false)
+        end
+        assertions << any_of_constraint(branches)
       end
 
       if schema_hsh.key?("oneOf")
