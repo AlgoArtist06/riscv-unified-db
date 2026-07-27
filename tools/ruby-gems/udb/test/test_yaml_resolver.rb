@@ -560,6 +560,44 @@ class TestYamlResolver < Minitest::Test
     end
   end
 
+  # A `$inherits` target is untrusted data from a spec file, so it must not be able
+  # to name a file outside the architecture root.
+  #
+  # NOTE: these live above the `private` marker deliberately. Minitest only collects
+  # *public* `test_*` methods, so a test defined below it never runs.
+  def test_inherits_cannot_escape_arch_root
+    arch_dir = Pathname.new(@test_dir) / "arch" / "ext"
+    arch_dir.mkpath
+    outside = Pathname.new(@test_dir) / "outside"
+    outside.mkpath
+    File.write(outside / "secrets.yaml", "name: secrets\nsecret: s3cret\n")
+
+    ["../outside/secrets.yaml#", "#{outside / "secrets.yaml"}#"].each do |target|
+      File.write(arch_dir / "Evil.yaml", "name: Evil\n$inherits: \"#{target}\"\n")
+
+      err = assert_raises(RuntimeError) do
+        Udb::Yaml::Resolver.new(quiet: true).resolve_files(
+          arch_dir.parent, Pathname.new(@test_dir) / "resolved", no_checks: true
+        )
+      end
+      assert_match(/escapes the architecture root/, err.message, "did not block #{target}")
+    end
+  end
+
+  def test_inherits_still_resolves_targets_inside_arch_root
+    arch_dir = Pathname.new(@test_dir) / "arch" / "ext"
+    arch_dir.mkpath
+    File.write(arch_dir / "Base.yaml", "name: Base\nfoo: 1\n")
+    File.write(arch_dir / "Child.yaml", "name: Child\n$inherits: \"ext/Base.yaml#\"\nbar: 2\n")
+
+    resolved_dir = Pathname.new(@test_dir) / "resolved"
+    Udb::Yaml::Resolver.new(quiet: true).resolve_files(arch_dir.parent, resolved_dir, no_checks: true)
+
+    child = Psych.safe_load_file(resolved_dir / "ext" / "Child.yaml", permitted_classes: [Date])
+    assert_equal 1, child["foo"]
+    assert_equal 2, child["bar"]
+  end
+
   private
 
   # Recursively find all compiled AST hashes (identified by having a "source" hash
