@@ -598,6 +598,30 @@ class TestYamlResolver < Minitest::Test
     assert_equal 2, child["bar"]
   end
 
+  # An `arch_overlay` may live outside the repo (Resolver#merge_arch accepts an absolute
+  # path), so the containment check must not treat that as an escape. It doesn't, because
+  # merging copies the overlay into the generated merged tree first and resolution only
+  # ever runs against that tree -- this test pins that ordering.
+  def test_out_of_tree_overlay_inherits_across_the_merged_tree
+    std_dir = Pathname.new(@test_dir) / "std" / "ext"
+    std_dir.mkpath
+    File.write(std_dir / "Base.yaml", "name: Base\nfoo: 1\n")
+
+    overlay_dir = Pathname.new(@test_dir) / "outside" / "overlay" / "ext"
+    overlay_dir.mkpath
+    File.write(overlay_dir / "MyExt.yaml", "name: MyExt\n$inherits: \"ext/Base.yaml#\"\nbar: 2\n")
+
+    merged_dir = Pathname.new(@test_dir) / "merged"
+    resolved_dir = Pathname.new(@test_dir) / "resolved"
+    resolver = Udb::Yaml::Resolver.new(quiet: true)
+    resolver.merge_files(std_dir.parent, overlay_dir.parent, merged_dir)
+    resolver.resolve_files(merged_dir, resolved_dir, no_checks: true)
+
+    my_ext = Psych.safe_load_file(resolved_dir / "ext" / "MyExt.yaml", permitted_classes: [Date])
+    assert_equal 1, my_ext["foo"], "overlay file could not inherit from the standard spec"
+    assert_equal 2, my_ext["bar"]
+  end
+
   private
 
   # Recursively find all compiled AST hashes (identified by having a "source" hash
