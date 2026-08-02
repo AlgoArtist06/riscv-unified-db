@@ -488,10 +488,13 @@ def load_csrs(csr_root, enabled_extensions, include_all=False, target_arch="RV64
 def load_exception_codes(resolved_codes_file):
     """Load exception codes from a pre-resolved JSON file.
 
-    Exception code names in the raw YAML contain unresolved ERB templates, so they
-    must be resolved by the Ruby side first (see with_resolved_exception_codes in
-    backends/generators/tasks.rake). There is deliberately no fallback to reading
-    the YAML directly: it emitted identifiers containing literal template markers.
+    The file is a temporary Ruby-to-Python handoff, written by
+    with_resolved_exception_codes in backends/generators/tasks.rake and unlinked as
+    soon as the generator exits. It is never checked in. Only the Ruby side holds a
+    cfg_arch, which is what decides *which* codes apply to the configuration (the
+    defined_by_condition filtering in Extension#exception_codes) and renders any ERB
+    in a code name. Reading spec/std/isa/exception_code/*.yaml here instead would
+    skip both steps, so there is deliberately no fallback to the raw YAML.
 
     Raises ValueError if the file is missing or cannot be parsed, so a broken
     exception code list fails the build instead of silently generating none.
